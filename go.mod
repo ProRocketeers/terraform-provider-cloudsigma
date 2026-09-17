@@ -3,7 +3,7 @@ module github.com/ProRocketeers/terraform-provider-cloudsigma
 go 1.22
 
 require (
-	github.com/ProRocketeers/cloudsigma-go v0.1.0
+	github.com/ProRocketeers/cloudsigma-go v0.1.1
 	github.com/cloudsigma/cloudsigma-sdk-go v0.15.1
 	github.com/hashicorp/terraform-plugin-framework v1.10.0
 	github.com/hashicorp/terraform-plugin-go v0.23.0
