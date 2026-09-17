@@ -15,7 +15,8 @@ import (
 
 	"github.com/cloudsigma/cloudsigma-sdk-go/cloudsigma"
 
-	"github.com/ProRocketeers/terraform-provider-cloudsigma/internal/tcloud"
+	csgo "github.com/ProRocketeers/cloudsigma-go"
+	"github.com/ProRocketeers/terraform-provider-cloudsigma/internal/sdkopt"
 )
 
 const (
@@ -202,12 +203,12 @@ func (p *cloudSigmaProvider) Configure(ctx context.Context, request provider.Con
 	}
 	opts := []cloudsigma.ClientOption{cloudsigma.WithUserAgent(p.userAgent())}
 	if baseURL != "" {
-		opts = append(opts, tcloud.BaseURLOption(baseURL))
+		opts = append(opts, sdkopt.BaseURLOption(baseURL))
 	} else {
 		opts = append(opts, cloudsigma.WithLocation(location))
 	}
 	if otpSecret != "" {
-		httpClient, err := tcloud.Login(ctx, tcloud.Endpoint(baseURL, location), username, password, otpSecret, impersonate, p.userAgent())
+		httpClient, err := csgo.Login(ctx, csgo.Endpoint(baseURL, location), username, password, otpSecret, impersonate, p.userAgent())
 		if err != nil {
 			response.Diagnostics.AddError("Cannot authenticate with CloudSigma", err.Error())
 			return

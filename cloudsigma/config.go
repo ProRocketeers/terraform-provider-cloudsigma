@@ -8,7 +8,8 @@ import (
 	"github.com/cloudsigma/cloudsigma-sdk-go/cloudsigma"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"github.com/ProRocketeers/terraform-provider-cloudsigma/internal/tcloud"
+	csgo "github.com/ProRocketeers/cloudsigma-go"
+	"github.com/ProRocketeers/terraform-provider-cloudsigma/internal/sdkopt"
 )
 
 // Config represents the configuration structure used to instantiate
@@ -44,12 +45,12 @@ func (c *Config) Client() (*cloudsigma.Client, error) {
 	}
 	opts := []cloudsigma.ClientOption{cloudsigma.WithUserAgent(c.userAgent)}
 	if c.BaseURL != "" {
-		opts = append(opts, tcloud.BaseURLOption(c.BaseURL))
+		opts = append(opts, sdkopt.BaseURLOption(c.BaseURL))
 	} else {
 		opts = append(opts, cloudsigma.WithLocation(c.Location))
 	}
 	if c.OTPSecret != "" {
-		httpClient, err := tcloud.Login(c.context, tcloud.Endpoint(c.BaseURL, c.Location), c.Username, c.Password, c.OTPSecret, c.Impersonate, c.userAgent)
+		httpClient, err := csgo.Login(c.context, csgo.Endpoint(c.BaseURL, c.Location), c.Username, c.Password, c.OTPSecret, c.Impersonate, c.userAgent)
 		if err != nil {
 			return nil, err
 		}

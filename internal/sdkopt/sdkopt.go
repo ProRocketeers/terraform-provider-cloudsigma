@@ -1,20 +1,10 @@
-package tcloud
+package sdkopt
 
 import (
-	"strings"
-
 	"github.com/cloudsigma/cloudsigma-sdk-go/cloudsigma"
-)
 
-// Endpoint returns the API host and path (no scheme) for the given base URL,
-// falling back to the CloudSigma location subdomain.
-func Endpoint(baseURL, location string) string {
-	if baseURL == "" {
-		return location + ".cloudsigma.com/api/2.0/"
-	}
-	baseURL = strings.TrimPrefix(strings.TrimPrefix(baseURL, "https://"), "http://")
-	return strings.TrimSuffix(baseURL, "/") + "/"
-}
+	csgo "github.com/ProRocketeers/cloudsigma-go"
+)
 
 // BaseURLOption points the SDK at an arbitrary API host.
 //
@@ -24,5 +14,5 @@ func Endpoint(baseURL, location string) string {
 // request URLs. Upgrade path: a WithBaseURL option upstream. Guarded by
 // TestBaseURLOption.
 func BaseURLOption(baseURL string) cloudsigma.ClientOption {
-	return cloudsigma.WithLocation(Endpoint(baseURL, "") + "#")
+	return cloudsigma.WithLocation(csgo.Endpoint(baseURL, "") + "#")
 }
