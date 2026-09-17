@@ -14,6 +14,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/cloudsigma/cloudsigma-sdk-go/cloudsigma"
+
+	"github.com/ProRocketeers/terraform-provider-cloudsigma/internal/tcloud"
 )
 
 const (
@@ -49,9 +51,16 @@ func (p *cloudSigmaProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 		Attributes: map[string]schema.Attribute{
 			"base_url": schema.StringAttribute{
 				Optional:    true,
-				Description: "The base URL endpoint for CloudSigma. Default is 'cloudsigma.com/api/2.0/'.",
-				DeprecationMessage: `This "base_url" attribute is unused and will be removed in a future version of the provider. ` +
-					"Please use location to specify CloudSigma API endpoint if needed: https://docs.cloudsigma.com/en/latest/general.html#api-endpoint.",
+				Description: "The API host and path, without a scheme. Overrides 'location'. Example: 'prg1.t-cloud.eu/api/2.0/'.",
+			},
+			"otp_secret": schema.StringAttribute{
+				Optional:    true,
+				Sensitive:   true,
+				Description: "The base32 TOTP secret for accounts with enforced 2FA.",
+			},
+			"impersonate": schema.StringAttribute{
+				Optional:    true,
+				Description: "UUID of a user to impersonate after login. All operations then act as that user.",
 			},
 			"location": schema.StringAttribute{
 				Optional:    true,
@@ -76,21 +85,26 @@ func (p *cloudSigmaProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 }
 
 type providerModel struct {
-	BaseURL  types.String `tfsdk:"base_url"`
-	Location types.String `tfsdk:"location"`
-	Password types.String `tfsdk:"password"`
-	Token    types.String `tfsdk:"token"`
-	Username types.String `tfsdk:"username"`
+	BaseURL     types.String `tfsdk:"base_url"`
+	Location    types.String `tfsdk:"location"`
+	OTPSecret   types.String `tfsdk:"otp_secret"`
+	Impersonate types.String `tfsdk:"impersonate"`
+	Password    types.String `tfsdk:"password"`
+	Token       types.String `tfsdk:"token"`
+	Username    types.String `tfsdk:"username"`
 }
 
 func (p *cloudSigmaProvider) Configure(ctx context.Context, request provider.ConfigureRequest, response *provider.ConfigureResponse) {
 	var (
 		config providerModel
 
-		location string
-		password string
-		token    string
-		username string
+		baseURL     string
+		impersonate string
+		location    string
+		otpSecret   string
+		password    string
+		token       string
+		username    string
 	)
 
 	diags := request.Config.Get(ctx, &config)
@@ -100,6 +114,9 @@ func (p *cloudSigmaProvider) Configure(ctx context.Context, request provider.Con
 	}
 
 	// default values to environment variables, but override with config value if set
+	baseURL = os.Getenv("CLOUDSIGMA_BASE_URL")
+	otpSecret = os.Getenv("CLOUDSIGMA_OTP_SECRET")
+	impersonate = os.Getenv("CLOUDSIGMA_IMPERSONATE")
 	location = os.Getenv("CLOUDSIGMA_LOCATION")
 	password = os.Getenv("CLOUDSIGMA_PASSWORD")
 	token = os.Getenv("CLOUDSIGMA_TOKEN")
@@ -114,6 +131,15 @@ func (p *cloudSigmaProvider) Configure(ctx context.Context, request provider.Con
 			})
 			location = defaultLocation
 		}
+	}
+	if !config.BaseURL.IsNull() {
+		baseURL = config.BaseURL.ValueString()
+	}
+	if !config.OTPSecret.IsNull() {
+		otpSecret = config.OTPSecret.ValueString()
+	}
+	if !config.Impersonate.IsNull() {
+		impersonate = config.Impersonate.ValueString()
 	}
 	if !config.Password.IsNull() {
 		password = config.Password.ValueString()
@@ -174,10 +200,21 @@ func (p *cloudSigmaProvider) Configure(ctx context.Context, request provider.Con
 			"username":             username,
 		})
 	}
-	client := cloudsigma.NewClient(
-		creds,
-		cloudsigma.WithLocation(location), cloudsigma.WithUserAgent(p.userAgent()),
-	)
+	opts := []cloudsigma.ClientOption{cloudsigma.WithUserAgent(p.userAgent())}
+	if baseURL != "" {
+		opts = append(opts, tcloud.BaseURLOption(baseURL))
+	} else {
+		opts = append(opts, cloudsigma.WithLocation(location))
+	}
+	if otpSecret != "" {
+		httpClient, err := tcloud.Login(ctx, tcloud.Endpoint(baseURL, location), username, password, otpSecret, impersonate, p.userAgent())
+		if err != nil {
+			response.Diagnostics.AddError("Cannot authenticate with CloudSigma", err.Error())
+			return
+		}
+		opts = append(opts, cloudsigma.WithHTTPClient(httpClient))
+	}
+	client := cloudsigma.NewClient(creds, opts...)
 
 	response.DataSourceData = client
 	response.ResourceData = client

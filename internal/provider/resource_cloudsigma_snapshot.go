@@ -14,8 +14,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/cloudsigma/cloudsigma-sdk-go/cloudsigma"
-	"github.com/cloudsigma/terraform-provider-cloudsigma/internal/provider/drive"
-	"github.com/cloudsigma/terraform-provider-cloudsigma/internal/provider/snapshot"
+	"github.com/ProRocketeers/terraform-provider-cloudsigma/internal/provider/drive"
+	"github.com/ProRocketeers/terraform-provider-cloudsigma/internal/provider/snapshot"
 )
 
 var (

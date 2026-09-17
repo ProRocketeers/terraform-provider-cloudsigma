@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-mux/tf6muxserver"
 
 	"github.com/cloudsigma/cloudsigma-sdk-go/cloudsigma"
-	"github.com/cloudsigma/terraform-provider-cloudsigma/internal/provider"
+	"github.com/ProRocketeers/terraform-provider-cloudsigma/internal/provider"
 )
 
 var testAccProto6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){

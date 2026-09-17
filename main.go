@@ -5,8 +5,8 @@ import (
 	"flag"
 	"log"
 
-	"github.com/cloudsigma/terraform-provider-cloudsigma/cloudsigma"
-	"github.com/cloudsigma/terraform-provider-cloudsigma/internal/provider"
+	"github.com/ProRocketeers/terraform-provider-cloudsigma/cloudsigma"
+	"github.com/ProRocketeers/terraform-provider-cloudsigma/internal/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6/tf6server"
@@ -45,7 +45,7 @@ func main() {
 	}
 
 	err = tf6server.Serve(
-		"registry.terraform.io/cloudsigma/cloudsigma",
+		"registry.terraform.io/prorocketeers/cloudsigma",
 		muxServer.ProviderServer, serveOpts...,
 	)
 	if err != nil {

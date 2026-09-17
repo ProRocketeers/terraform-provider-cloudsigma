@@ -43,10 +43,21 @@ func Provider() *schema.Provider {
 			"base_url": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("CLOUDSIGMA_BASE_URL", "cloudsigma.com/api/2.0/"),
-				Description: "The base URL endpoint for CloudSigma. Default is 'cloudsigma.com/api/2.0/'.",
-				Deprecated: `This "base_url" attribute is unused and will be removed in a future version of the provider. ` +
-					"Please use location to specify CloudSigma API endpoint if needed: https://docs.cloudsigma.com/en/latest/general.html#api-endpoint.",
+				DefaultFunc: schema.EnvDefaultFunc("CLOUDSIGMA_BASE_URL", nil),
+				Description: "The API host and path, without a scheme. Overrides 'location'. Example: 'prg1.t-cloud.eu/api/2.0/'.",
+			},
+			"otp_secret": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Sensitive:   true,
+				DefaultFunc: schema.EnvDefaultFunc("CLOUDSIGMA_OTP_SECRET", nil),
+				Description: "The base32 TOTP secret for accounts with enforced 2FA.",
+			},
+			"impersonate": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("CLOUDSIGMA_IMPERSONATE", nil),
+				Description: "UUID of a user to impersonate after login. All operations then act as that user.",
 			},
 		},
 
@@ -66,15 +77,22 @@ func Provider() *schema.Provider {
 func providerConfigure(provider *schema.Provider) schema.ConfigureContextFunc {
 	return func(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 		config := &Config{
-			Token:    d.Get("token").(string),
-			Username: d.Get("username").(string),
-			Password: d.Get("password").(string),
-			Location: d.Get("location").(string),
-			BaseURL:  d.Get("base_url").(string),
+			Impersonate: d.Get("impersonate").(string),
+			OTPSecret:   d.Get("otp_secret").(string),
+			Token:       d.Get("token").(string),
+			Username:    d.Get("username").(string),
+			Password:    d.Get("password").(string),
+			Location:    d.Get("location").(string),
+			BaseURL:     d.Get("base_url").(string),
 		}
 
 		config.loadAndValidate(ctx, provider.TerraformVersion)
 
-		return config.Client(), nil
+		client, err := config.Client()
+		if err != nil {
+			return nil, diag.FromErr(err)
+		}
+
+		return client, nil
 	}
 }

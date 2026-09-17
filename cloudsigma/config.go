@@ -7,23 +7,27 @@ import (
 
 	"github.com/cloudsigma/cloudsigma-sdk-go/cloudsigma"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+
+	"github.com/ProRocketeers/terraform-provider-cloudsigma/internal/tcloud"
 )
 
 // Config represents the configuration structure used to instantiate
 // the Cloudsigma provider.
 type Config struct {
-	Token    string
-	Username string
-	Password string
-	Location string
-	BaseURL  string
+	Token       string
+	Username    string
+	Password    string
+	Location    string
+	BaseURL     string
+	OTPSecret   string
+	Impersonate string
 
 	context   context.Context
 	userAgent string
 }
 
 // Client returns a new client for accessing CloudSigma.
-func (c *Config) Client() *cloudsigma.Client {
+func (c *Config) Client() (*cloudsigma.Client, error) {
 	var creds cloudsigma.CredentialsProvider
 	if len(c.Token) > 0 {
 		creds = cloudsigma.NewTokenCredentialsProvider(c.Token)
@@ -38,12 +42,21 @@ func (c *Config) Client() *cloudsigma.Client {
 		})
 		log.Printf("[INFO] CloudSigma Client configured for user: %s, location: %s", c.Username, c.Location)
 	}
-	client := cloudsigma.NewClient(
-		creds,
-		cloudsigma.WithLocation(c.Location), cloudsigma.WithUserAgent(c.userAgent),
-	)
+	opts := []cloudsigma.ClientOption{cloudsigma.WithUserAgent(c.userAgent)}
+	if c.BaseURL != "" {
+		opts = append(opts, tcloud.BaseURLOption(c.BaseURL))
+	} else {
+		opts = append(opts, cloudsigma.WithLocation(c.Location))
+	}
+	if c.OTPSecret != "" {
+		httpClient, err := tcloud.Login(c.context, tcloud.Endpoint(c.BaseURL, c.Location), c.Username, c.Password, c.OTPSecret, c.Impersonate, c.userAgent)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, cloudsigma.WithHTTPClient(httpClient))
+	}
 
-	return client
+	return cloudsigma.NewClient(creds, opts...), nil
 }
 
 // loadAndValidate configures and returns a fully initialized CloudSigma SDK.

@@ -1,4 +1,4 @@
-module github.com/cloudsigma/terraform-provider-cloudsigma
+module github.com/ProRocketeers/terraform-provider-cloudsigma
 
 go 1.22
 

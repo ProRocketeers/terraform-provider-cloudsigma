@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cloudsigma/terraform-provider-cloudsigma/cloudsigma"
+	"github.com/ProRocketeers/terraform-provider-cloudsigma/cloudsigma"
 )
 
 const accTestPrefix = "tf-acc-test"
