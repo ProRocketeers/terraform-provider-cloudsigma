@@ -63,6 +63,10 @@ func (p *cloudSigmaProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 				Optional:    true,
 				Description: "UUID of a user to impersonate after login. All operations then act as that user.",
 			},
+			"session_cache_dir": schema.StringAttribute{
+				Optional:    true,
+				Description: "Absolute path to a private (0700) directory for reusing the 2FA login session across Terraform runs, so plan and apply do not burn a fresh TOTP each. Disabled when unset.",
+			},
 			"location": schema.StringAttribute{
 				Optional:    true,
 				Description: fmt.Sprintf("The location endpoint for CloudSigma. Default is '%s'.", defaultLocation),
@@ -90,6 +94,7 @@ type providerModel struct {
 	Location    types.String `tfsdk:"location"`
 	OTPSecret   types.String `tfsdk:"otp_secret"`
 	Impersonate types.String `tfsdk:"impersonate"`
+	SessionDir  types.String `tfsdk:"session_cache_dir"`
 	Password    types.String `tfsdk:"password"`
 	Token       types.String `tfsdk:"token"`
 	Username    types.String `tfsdk:"username"`
@@ -101,6 +106,7 @@ func (p *cloudSigmaProvider) Configure(ctx context.Context, request provider.Con
 
 		baseURL     string
 		impersonate string
+		sessionDir  string
 		location    string
 		otpSecret   string
 		password    string
@@ -118,6 +124,7 @@ func (p *cloudSigmaProvider) Configure(ctx context.Context, request provider.Con
 	baseURL = os.Getenv("CLOUDSIGMA_BASE_URL")
 	otpSecret = os.Getenv("CLOUDSIGMA_OTP_SECRET")
 	impersonate = os.Getenv("CLOUDSIGMA_IMPERSONATE")
+	sessionDir = os.Getenv("CLOUDSIGMA_SESSION_CACHE_DIR")
 	location = os.Getenv("CLOUDSIGMA_LOCATION")
 	password = os.Getenv("CLOUDSIGMA_PASSWORD")
 	token = os.Getenv("CLOUDSIGMA_TOKEN")
@@ -141,6 +148,9 @@ func (p *cloudSigmaProvider) Configure(ctx context.Context, request provider.Con
 	}
 	if !config.Impersonate.IsNull() {
 		impersonate = config.Impersonate.ValueString()
+	}
+	if !config.SessionDir.IsNull() {
+		sessionDir = config.SessionDir.ValueString()
 	}
 	if !config.Password.IsNull() {
 		password = config.Password.ValueString()
@@ -208,7 +218,7 @@ func (p *cloudSigmaProvider) Configure(ctx context.Context, request provider.Con
 		opts = append(opts, cloudsigma.WithLocation(location))
 	}
 	if otpSecret != "" {
-		httpClient, err := csgo.Login(ctx, csgo.Endpoint(baseURL, location), username, password, otpSecret, impersonate, p.userAgent())
+		httpClient, err := csgo.LoginWithOptions(ctx, csgo.Endpoint(baseURL, location), username, password, otpSecret, impersonate, p.userAgent(), csgo.LoginOptions{SessionCacheDir: sessionDir})
 		if err != nil {
 			response.Diagnostics.AddError("Cannot authenticate with CloudSigma", err.Error())
 			return
