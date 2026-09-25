@@ -127,6 +127,11 @@ The server resource allows you to manage CloudSigma servers.
 							Type:        schema.TypeString,
 							Optional:    true,
 						},
+						"mac": {
+							Description: "The MAC address of the NIC, assigned by CloudSigma. Useful for DHCP reservations.",
+							Type:        schema.TypeString,
+							Computed:    true,
+						},
 					},
 				},
 			},
@@ -364,6 +369,7 @@ func resourceCloudSigmaServerRead(ctx context.Context, d *schema.ResourceData, m
 			if nws.VLAN != nil {
 				nw["vlan_uuid"] = nws.VLAN.UUID
 			}
+			nw["mac"] = nws.MACAddress
 			networks = append(networks, nw)
 		}
 		if err := d.Set("network", networks); err != nil {

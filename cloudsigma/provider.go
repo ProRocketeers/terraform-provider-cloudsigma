@@ -59,6 +59,12 @@ func Provider() *schema.Provider {
 				DefaultFunc: schema.EnvDefaultFunc("CLOUDSIGMA_IMPERSONATE", nil),
 				Description: "UUID of a user to impersonate after login. All operations then act as that user.",
 			},
+			"session_cache_dir": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("CLOUDSIGMA_SESSION_CACHE_DIR", nil),
+				Description: "Absolute path to a private (0700) directory for reusing the 2FA login session across Terraform runs, so plan and apply do not burn a fresh TOTP each. Disabled when unset.",
+			},
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{},
@@ -79,6 +85,7 @@ func providerConfigure(provider *schema.Provider) schema.ConfigureContextFunc {
 		config := &Config{
 			Impersonate: d.Get("impersonate").(string),
 			OTPSecret:   d.Get("otp_secret").(string),
+			SessionDir:  d.Get("session_cache_dir").(string),
 			Token:       d.Get("token").(string),
 			Username:    d.Get("username").(string),
 			Password:    d.Get("password").(string),

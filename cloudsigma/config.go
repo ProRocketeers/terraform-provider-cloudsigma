@@ -22,6 +22,7 @@ type Config struct {
 	BaseURL     string
 	OTPSecret   string
 	Impersonate string
+	SessionDir  string
 
 	context   context.Context
 	userAgent string
@@ -50,7 +51,7 @@ func (c *Config) Client() (*cloudsigma.Client, error) {
 		opts = append(opts, cloudsigma.WithLocation(c.Location))
 	}
 	if c.OTPSecret != "" {
-		httpClient, err := csgo.Login(c.context, csgo.Endpoint(c.BaseURL, c.Location), c.Username, c.Password, c.OTPSecret, c.Impersonate, c.userAgent)
+		httpClient, err := csgo.LoginWithOptions(c.context, csgo.Endpoint(c.BaseURL, c.Location), c.Username, c.Password, c.OTPSecret, c.Impersonate, c.userAgent, csgo.LoginOptions{SessionCacheDir: c.SessionDir})
 		if err != nil {
 			return nil, err
 		}
