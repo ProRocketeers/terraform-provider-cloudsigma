@@ -105,3 +105,20 @@ func TestServerPutBody(t *testing.T) {
 		t.Error("a response without a uuid must not be PUT back")
 	}
 }
+
+func TestFlattenServerDrives(t *testing.T) {
+	if _, ok := flattenServerDrives(nil); ok {
+		t.Fatal("nil drives must leave state untouched")
+	}
+	if got, ok := flattenServerDrives([]cloudsigma.ServerDrive{}); !ok || len(got) != 0 {
+		t.Fatalf("empty list must clear state, got %v %v", got, ok)
+	}
+	if _, ok := flattenServerDrives([]cloudsigma.ServerDrive{{Device: "virtio"}}); ok {
+		t.Fatal("drive without UUID must leave state untouched")
+	}
+	got, ok := flattenServerDrives([]cloudsigma.ServerDrive{{Device: "scsi", Drive: &cloudsigma.Drive{UUID: "u1"}}})
+	want := []interface{}{map[string]interface{}{"uuid": "u1", "device": "scsi"}}
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v %v, want %v", got, ok, want)
+	}
+}
