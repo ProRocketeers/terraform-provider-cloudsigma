@@ -428,3 +428,23 @@ func TestResourceCloudSigmaServer_findIPv4Address(t *testing.T) {
 		}
 	}
 }
+
+func TestResourceCloudSigmaServer_avoidUUIDs(t *testing.T) {
+	servers := []cloudsigma.Server{
+		{UUID: "cp3", Name: "talos-poc-cp3"},
+		{UUID: "w1", Name: "talos-poc-w1"},
+		{UUID: "cp1", Name: "talos-poc-cp1"},
+		{UUID: "self", Name: "talos-poc-cp2"},
+		{UUID: "other", Name: "talos-poc2-cp1"},
+	}
+
+	got := avoidUUIDs(servers, "self", "talos-poc-cp")
+	want := []string{"cp1", "cp3"} // name order, self and non-matching names dropped
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("avoidUUIDs() = %v, want %v", got, want)
+	}
+
+	if got := avoidUUIDs(servers, "self", "nothing-"); len(got) != 0 {
+		t.Errorf("avoidUUIDs() with no match = %v, want empty", got)
+	}
+}

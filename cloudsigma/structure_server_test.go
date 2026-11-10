@@ -76,3 +76,32 @@ func TestStructureServer_flattenEnclavePageCaches(t *testing.T) {
 		})
 	}
 }
+
+func TestServerPutBody(t *testing.T) {
+	live := []byte(`{"uuid":"u","name":"old","cpu":2000,"cpu_model":"x","mem":9007199254740993,
+		"nics":[{"mac":"22:aa:00:00:00:01","vlan":{"uuid":"v"}}],
+		"drives":[{"dev_channel":"0:0","drive":{"uuid":"boot"}},{"dev_channel":"0:1","drive":{"uuid":"csi"}}],
+		"tags":[{"uuid":"t"}],"meta":{"ssh_public_key":"k","stale":"1"}}`)
+	body, err := serverPutBody(live,
+		map[string]interface{}{"name": "new", "tags": []cloudsigma.Tag{}},
+		map[string]interface{}{"private_ip": "10.10.0.10"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body["nics"].([]interface{})) != 1 || len(body["drives"].([]interface{})) != 2 || body["cpu_model"] != "x" {
+		t.Errorf("unchanged fields were not carried over: %v", body)
+	}
+	if body["name"] != "new" || len(body["tags"].([]cloudsigma.Tag)) != 0 {
+		t.Errorf("set fields were not applied: %v", body)
+	}
+	wantMeta := map[string]interface{}{"ssh_public_key": "k", "private_ip": "10.10.0.10"}
+	if !reflect.DeepEqual(body["meta"], wantMeta) {
+		t.Errorf("meta = %v, want %v", body["meta"], wantMeta)
+	}
+	if got := body["mem"].(interface{ String() string }).String(); got != "9007199254740993" {
+		t.Errorf("mem rounded to %s", got)
+	}
+	if _, err := serverPutBody([]byte(`{}`), nil, nil); err == nil {
+		t.Error("a response without a uuid must not be PUT back")
+	}
+}

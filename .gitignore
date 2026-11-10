@@ -4,6 +4,7 @@
 .bin/
 build/
 dist/
+terraform-provider-cloudsigma
 
 #################################
 # Terraform files               #
