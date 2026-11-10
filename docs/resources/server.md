@@ -102,6 +102,7 @@ resource "cloudsigma_server" "web" {
 
 ### Optional
 
+- `avoid_name_prefix` (String) Ask CloudSigma to start this server on a different physical host than every other server whose name starts with this prefix (the `avoid` start hint). Best effort: the start succeeds even when the hint cannot be satisfied. Only applied when the provider starts the server, so changing it never restarts a running server.
 - `drive` (Block List) Drive attached to the server on creation.The server will boot from the first defined drive in this resource, which get `boot_order = 1`. (see [below for nested schema](#nestedblock--drive))
 - `enclave_page_caches` (List of Number) SGX enclaves defined with its size in bytes.
 - `meta` (Map of String) The field can be used to store arbitrary information in key-value form.

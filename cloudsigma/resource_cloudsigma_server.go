@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"regexp"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -170,6 +173,16 @@ The server resource allows you to manage CloudSigma servers.
 				},
 			},
 
+			"avoid_name_prefix": {
+				Description: "Ask CloudSigma to start this server on a different physical host than every other " +
+					"server whose name starts with this prefix (the `avoid` start hint). Best effort: the start " +
+					"succeeds even when the hint cannot be satisfied. Only applied when the provider starts the " +
+					"server, so changing it never restarts a running server.",
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.NoZeroValues,
+			},
+
 			"vnc_password": {
 				Description: "VNC Password to connect to server.",
 				Type:        schema.TypeString,
@@ -310,7 +323,7 @@ func resourceCloudSigmaServerCreate(ctx context.Context, d *schema.ResourceData,
 	}
 
 	// start server
-	err = startServer(ctx, client, d.Id())
+	err = startServer(ctx, client, d.Id(), d.Get("avoid_name_prefix").(string))
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -391,9 +404,15 @@ func resourceCloudSigmaServerRead(ctx context.Context, d *schema.ResourceData, m
 func resourceCloudSigmaServerUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	client := meta.(*cloudsigma.Client)
 
+	// avoid_name_prefix is a start-time hint only; it never reaches the server
+	// definition, so a change to it alone must not send an update.
+	if !d.HasChangesExcept("avoid_name_prefix") {
+		return resourceCloudSigmaServerRead(ctx, d, meta)
+	}
+
 	// Note that if a server is running, only name, meta, and tags fields can be changed
 	// and all other changes to the definition of a running server will be ignored.
-	needRestart := d.HasChangesExcept("name", "meta", "tags")
+	needRestart := d.HasChangesExcept("name", "meta", "tags", "avoid_name_prefix")
 
 	err := validateSMP(d)
 	if err != nil {
@@ -503,7 +522,7 @@ func resourceCloudSigmaServerUpdate(ctx context.Context, d *schema.ResourceData,
 	}
 
 	if needRestart {
-		err = startServer(ctx, client, d.Id())
+		err = startServer(ctx, client, d.Id(), d.Get("avoid_name_prefix").(string))
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -598,7 +617,9 @@ func serverStateRefreshFunc(ctx context.Context, client *cloudsigma.Client, serv
 	}
 }
 
-func startServer(ctx context.Context, client *cloudsigma.Client, serverUUID string) error {
+// startServer starts a stopped server. A non-empty avoidNamePrefix sends the
+// start with the avoid hint, listing every other server whose name has that prefix.
+func startServer(ctx context.Context, client *cloudsigma.Client, serverUUID, avoidNamePrefix string) error {
 	log.Printf("[DEBUG] Starting server (%s)", serverUUID)
 
 	log.Printf("[DEBUG] Checking server status before starting")
@@ -612,7 +633,11 @@ func startServer(ctx context.Context, client *cloudsigma.Client, serverUUID stri
 		return nil
 	}
 
-	_, _, err = client.Servers.Start(ctx, server.UUID)
+	if avoidNamePrefix == "" {
+		_, _, err = client.Servers.Start(ctx, server.UUID)
+	} else {
+		err = startServerAvoiding(ctx, client, server.UUID, avoidNamePrefix)
+	}
 	if err != nil {
 		return fmt.Errorf("error starting server: %s", err)
 	}
@@ -665,4 +690,47 @@ func stopServer(ctx context.Context, client *cloudsigma.Client, serverUUID strin
 	}
 
 	return nil
+}
+
+// avoidUUIDs returns every server except self whose name starts with prefix,
+// sorted by name: the API treats the avoid list as ordered preference.
+func avoidUUIDs(servers []cloudsigma.Server, self, prefix string) []string {
+	sort.Slice(servers, func(i, j int) bool { return servers[i].Name < servers[j].Name })
+	uuids := make([]string, 0)
+	for _, s := range servers {
+		if s.UUID != self && strings.HasPrefix(s.Name, prefix) {
+			uuids = append(uuids, s.UUID)
+		}
+	}
+	return uuids
+}
+
+// startServerAvoiding sends the start action with the avoid hint. The SDK's
+// Start takes no query parameters, so the request is built by hand.
+func startServerAvoiding(ctx context.Context, client *cloudsigma.Client, serverUUID, prefix string) error {
+	// limit=0 disables paging; the default page (20) would silently drop peers.
+	req, err := client.NewRequest(http.MethodGet, "servers/?limit=0", nil)
+	if err != nil {
+		return err
+	}
+	var list struct {
+		Objects []cloudsigma.Server `json:"objects"`
+	}
+	if _, err := client.Do(ctx, req, &list); err != nil {
+		return fmt.Errorf("error listing servers for avoid: %s", err)
+	}
+
+	avoid := avoidUUIDs(list.Objects, serverUUID, prefix)
+	path := fmt.Sprintf("servers/%s/action/?do=start", serverUUID)
+	if len(avoid) > 0 {
+		path += "&avoid=" + strings.Join(avoid, ",")
+	}
+	log.Printf("[DEBUG] Starting server (%s) avoiding %v", serverUUID, avoid)
+
+	req, err = client.NewRequest(http.MethodPost, path, nil)
+	if err != nil {
+		return err
+	}
+	_, err = client.Do(ctx, req, nil)
+	return err
 }

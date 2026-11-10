@@ -286,7 +286,7 @@ func resourceCloudSigmaDriveUpdate(ctx context.Context, d *schema.ResourceData, 
 		}
 
 		for _, mountedOn := range mountedOns {
-			err := startServer(ctx, client, mountedOn.UUID)
+			err := startServer(ctx, client, mountedOn.UUID, "")
 			if err != nil {
 				return diag.FromErr(err)
 			}
