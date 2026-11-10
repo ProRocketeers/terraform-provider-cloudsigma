@@ -1,7 +1,9 @@
 package cloudsigma
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -419,18 +421,21 @@ func resourceCloudSigmaServerUpdate(ctx context.Context, d *schema.ResourceData,
 		return diag.FromErr(err)
 	}
 
-	updateRequest := &cloudsigma.ServerUpdateRequest{
-		Server: &cloudsigma.Server{
-			CPU:         d.Get("cpu").(int),
-			Memory:      d.Get("memory").(int),
-			Name:        d.Get("name").(string),
-			SMP:         d.Get("smp").(int),
-			VNCPassword: d.Get("vnc_password").(string),
-		},
+	// set holds only the fields this update writes. They are overlaid on the
+	// server as the API returns it (serverPutBody): the PUT replaces the whole
+	// object, so a field left out of the body is removed from the server.
+	set := map[string]interface{}{
+		"cpu":  d.Get("cpu").(int),
+		"mem":  d.Get("memory").(int),
+		"name": d.Get("name").(string),
+		"epcs": expandEnclavePageCaches(d.Get("enclave_page_caches").([]interface{})),
+		"tags": expandTags(d.Get("tags").(*schema.Set).List()),
 	}
-
-	if v, ok := d.GetOk("enclave_page_caches"); ok {
-		updateRequest.EnclavePageCaches = expandEnclavePageCaches(v.([]interface{}))
+	if v := d.Get("smp").(int); v != 0 {
+		set["smp"] = v
+	}
+	if v := d.Get("vnc_password").(string); v != "" {
+		set["vnc_password"] = v
 	}
 
 	if d.HasChange("drive") {
@@ -448,19 +453,10 @@ func resourceCloudSigmaServerUpdate(ctx context.Context, d *schema.ResourceData,
 			})
 		}
 
-		updateRequest.Drives = serverDrives
+		set["drives"] = serverDrives
 	}
 
-	if v, ok := d.GetOk("meta"); ok {
-		m := v.(map[string]interface{})
-		if updateRequest.Meta == nil {
-			updateRequest.Meta = make(map[string]interface{})
-		}
-
-		for k, val := range m {
-			updateRequest.Meta[k] = val
-		}
-	}
+	configMeta := d.Get("meta").(map[string]interface{})
 
 	if d.HasChange("network") {
 		serverNICs := make([]cloudsigma.ServerNIC, 0)
@@ -501,11 +497,7 @@ func resourceCloudSigmaServerUpdate(ctx context.Context, d *schema.ResourceData,
 			}
 		}
 
-		updateRequest.NICs = serverNICs
-	}
-
-	if v, ok := d.GetOk("tags"); ok {
-		updateRequest.Tags = expandTags(v.(*schema.Set).List())
+		set["nics"] = serverNICs
 	}
 
 	if needRestart {
@@ -515,9 +507,27 @@ func resourceCloudSigmaServerUpdate(ctx context.Context, d *schema.ResourceData,
 		}
 	}
 
-	log.Printf("[DEBUG] Server update configuration: %v", *updateRequest)
-	_, _, err = client.Servers.Update(ctx, d.Id(), updateRequest)
+	// Read after the stop and right before the PUT, to keep the window in which
+	// another writer (the CSI driver attaching a drive) can be overwritten short.
+	path := fmt.Sprintf("servers/%s/", d.Id())
+	req, err := client.NewRequest(http.MethodGet, path, nil)
 	if err != nil {
+		return diag.FromErr(err)
+	}
+	var live bytes.Buffer
+	if _, err = client.Do(ctx, req, &live); err != nil {
+		return diag.FromErr(err)
+	}
+	body, err := serverPutBody(live.Bytes(), set, configMeta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	log.Printf("[DEBUG] Server update sets: %v", set)
+	req, err = client.NewRequest(http.MethodPut, path, body)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	if _, err = client.Do(ctx, req, nil); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -529,6 +539,43 @@ func resourceCloudSigmaServerUpdate(ctx context.Context, d *schema.ResourceData,
 	}
 
 	return resourceCloudSigmaServerRead(ctx, d, meta)
+}
+
+// serverPutBody builds the body of a server PUT: the server exactly as the API
+// returned it, with set laid over it and meta replaced by configMeta.
+//
+// The PUT replaces the whole object, also on a running server. A body built from
+// the configuration alone leaves out everything it does not model - above all
+// the NICs and drives when they did not change - and the API then removes them.
+// That is how a meta-only change took a running guest off the network.
+//
+// ssh_public_key is kept from the live meta: it is managed by ssh_keys and is
+// never in the configuration.
+func serverPutBody(live []byte, set, configMeta map[string]interface{}) (map[string]interface{}, error) {
+	// json.Number: a float64 would round integers above 2^53 on the way back.
+	decoder := json.NewDecoder(bytes.NewReader(live))
+	decoder.UseNumber()
+	var body map[string]interface{}
+	if err := decoder.Decode(&body); err != nil {
+		return nil, fmt.Errorf("error decoding server for update: %s", err)
+	}
+	if body["uuid"] == nil {
+		return nil, fmt.Errorf("error reading server for update: response has no uuid")
+	}
+	for k, v := range set {
+		body[k] = v
+	}
+	meta := make(map[string]interface{}, len(configMeta)+1)
+	if liveMeta, ok := body["meta"].(map[string]interface{}); ok {
+		if key, ok := liveMeta["ssh_public_key"]; ok {
+			meta["ssh_public_key"] = key
+		}
+	}
+	for k, v := range configMeta {
+		meta[k] = v
+	}
+	body["meta"] = meta
+	return body, nil
 }
 
 func resourceCloudSigmaServerDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
